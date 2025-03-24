@@ -8,6 +8,7 @@ import pdfplumber
 import google.generativeai as genai
 from agents import Agent, Runner, OpenAIChatCompletionsModel, AsyncOpenAI
 
+
 # ✅ Load environment variables
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
