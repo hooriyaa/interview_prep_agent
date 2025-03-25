@@ -1,13 +1,11 @@
 import streamlit as st
 import os
 import asyncio  
-import speech_recognition as sr
 from dotenv import load_dotenv
 from fpdf import FPDF
 import pdfplumber
 import google.generativeai as genai
 from agents import Agent, Runner, OpenAIChatCompletionsModel, AsyncOpenAI
-
 
 # ✅ Load environment variables
 load_dotenv()
@@ -42,73 +40,59 @@ if "feedback" not in st.session_state:
 
 # ✅ Function to generate sample interview questions
 def generate_sample_questions(job_title: str) -> str:
-    prompt = f"Generate 10 common interview questions for a {job_title} position, along with ideal sample answers."
-    
-    # ✅ Use asyncio.run() to handle async functions in Streamlit
-    result = asyncio.run(Runner.run(agent, prompt))  
-    return result.final_output
+    try:
+        prompt = f"Generate 10 common interview questions for a {job_title} position, along with ideal sample answers."
+        result = asyncio.run(Runner.run(agent, prompt))  
+        return result.final_output
+    except Exception as e:
+        return f"Error generating questions: {e}"
 
 # ✅ Function to conduct mock interview and provide feedback
 def mock_interview_response(user_answer: str) -> str:
-    prompt = f"""
-    You are an AI Interviewer. Evaluate the following candidate response based on:
-    - Clarity and structure
-    - Technical correctness
-    - Confidence and tone
-    - Grammar and fluency
-    - Overall effectiveness
-
-    Then provide:
-    1. **Score out of 10** 📊
-    2. **Constructive feedback** 📝
-    3. **Suggested improvements** 🚀
-    4. **A relevant follow-up question** ❓
-
-    Candidate's Answer:
-    "{user_answer}"
-    """
-    
-    # ✅ Use asyncio.run() to handle async functions
-    result = asyncio.run(Runner.run(agent, prompt))  
-    return result.final_output
-
-# ✅ Voice-to-text conversion using SpeechRecognition
-def transcribe_audio() -> str:
     try:
-        recognizer = sr.Recognizer()
-        with sr.Microphone() as source:
-            st.info("Listening... Please speak your answer clearly.")
-            recognizer.adjust_for_ambient_noise(source, duration=1)
-            audio = recognizer.listen(source, timeout=10, phrase_time_limit=70)  
+        prompt = f"""
+        You are an AI Interviewer. Evaluate the following candidate response based on:
+        - Clarity and structure
+        - Technical correctness
+        - Confidence and tone
+        - Grammar and fluency
+        - Overall effectiveness
 
-        try:
-            text = recognizer.recognize_google(audio)
-            return text
-        except sr.UnknownValueError:
-            return "Sorry, I couldn't understand your response. Please try again."
-        except sr.RequestError as e:
-            return f"Could not process audio; {e}"
+        Then provide:
+        1. **Score out of 10** 📊
+        2. **Constructive feedback** 📝
+        3. **Suggested improvements** 🚀
+        4. **A relevant follow-up question** ❓
 
+        Candidate's Answer:
+        "{user_answer}"
+        """
+        result = asyncio.run(Runner.run(agent, prompt))  
+        return result.final_output
     except Exception as e:
-        return f"Voice input error: {e}"
+        return f"Error analyzing response: {e}"
 
 # ✅ Resume analysis using PDFPlumber
 def analyze_resume(uploaded_file) -> str:
-    with pdfplumber.open(uploaded_file) as pdf:
-        text = "".join(page.extract_text() for page in pdf.pages if page.extract_text())
-    prompt = f"Analyze this resume and provide suggestions for improvement:\n{text}"
-    
-    # ✅ Use asyncio.run() for async execution
-    result = asyncio.run(Runner.run(agent, prompt))  
-    return result.final_output
+    try:
+        with pdfplumber.open(uploaded_file) as pdf:
+            text = "".join(page.extract_text() for page in pdf.pages if page.extract_text())
+        prompt = f"Analyze this resume and provide suggestions for improvement:\n{text}"
+        result = asyncio.run(Runner.run(agent, prompt))  
+        return result.final_output
+    except Exception as e:
+        return f"Error analyzing resume: {e}"
 
 # ✅ Generate a PDF report with FPDF
 def generate_pdf_report(content: str, filename: str):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.multi_cell(0, 10, content)
-    pdf.output(filename)
+    try:
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", size=12)
+        pdf.multi_cell(0, 10, content)
+        pdf.output(filename)
+    except Exception as e:
+        st.error(f"Error generating PDF: {e}")
 
 # ✅ Streamlit App UI
 st.set_page_config(page_title="Job Interview Prep Agent", page_icon="🧠")
@@ -142,48 +126,20 @@ with tab1:
         with st.spinner("Generating sample questions..."):
             st.session_state.questions = generate_sample_questions(job_title)
         st.markdown(st.session_state.questions)
-
     elif st.session_state.questions:
         st.markdown(st.session_state.questions)
 
 # ✅ Mock Interview Tab
 with tab2:
     st.header("🎤 Mock Interview")
+    user_answer = st.text_area("Your Answer:", height=150, placeholder="Type your response here...")
     
-    interview_mode = st.radio("Select Input Mode:", ("Text Input", "Voice Input"))
-
-    if interview_mode == "Text Input":
-        user_answer = st.text_area("Your Answer:", height=150, placeholder="Type your response here...")
-        
-        if st.button("Submit Text Answer"):
-            with st.spinner("Analyzing your response..."):
-                feedback_response = mock_interview_response(user_answer)
-                st.session_state.feedback = feedback_response
-
-            st.subheader("📝 Feedback on Your Answer:")
-            st.markdown(st.session_state.feedback)
-            
-    else:
-        if st.button("Start Voice Interview"):
-            with st.spinner("Listening..."):
-                user_answer = transcribe_audio()
-
-            st.text(f"You said: {user_answer}")
-
-            if "Voice input error" in user_answer:
-                st.error(user_answer)
-            else:
-                with st.spinner("Analyzing your spoken answer..."):
-                    feedback_response = mock_interview_response(user_answer)
-                    st.session_state.feedback = feedback_response
-
-                st.subheader("📝 Feedback on Your Answer:")
-                st.markdown(st.session_state.feedback)
-
-    if st.session_state.feedback and "❓" in st.session_state.feedback:
-        follow_up_question = st.session_state.feedback.split("❓")[-1]
-        st.subheader("🔄 Follow-up Question:")
-        st.markdown(f"**{follow_up_question}**")
+    if st.button("Submit Answer"):
+        with st.spinner("Analyzing your response..."):
+            feedback_response = mock_interview_response(user_answer)
+            st.session_state.feedback = feedback_response
+        st.subheader("📝 Feedback on Your Answer:")
+        st.markdown(st.session_state.feedback)
 
 # ✅ Tips & Resources Tab
 with tab3:
@@ -196,11 +152,16 @@ with tab3:
     - Get feedback and refine your answers over time.
     """)
 
+# ✅ Download Interview Report
 if st.button("Download Full Interview Report"):
-    report_content = f"Interview Preparation Summary:\n\nSample Questions:\n{st.session_state.questions or 'No questions generated yet.'}\n\nFeedback:\n{st.session_state.feedback or 'No feedback generated yet.'}"
-    generate_pdf_report(report_content, "interview_report.pdf")
-    with open("interview_report.pdf", "rb") as file:
-        st.download_button("Download Report PDF", file, file_name="interview_report.pdf")
+    try:
+        report_content = f"Interview Preparation Summary:\n\nSample Questions:\n{st.session_state.questions or 'No questions generated yet.'}\n\nFeedback:\n{st.session_state.feedback or 'No feedback generated yet.'}"
+        filename = "interview_report.pdf"
+        generate_pdf_report(report_content, filename)
+        with open(filename, "rb") as file:
+            st.download_button("📥Download Report PDF", file, file_name=filename)
+    except Exception as e:
+        st.error(f"Error downloading report: {e}")
 
 st.markdown("---")  
 st.markdown(
