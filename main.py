@@ -1,6 +1,7 @@
 import streamlit as st
 import os
 import asyncio  
+import re
 from dotenv import load_dotenv
 from fpdf import FPDF
 import pdfplumber
@@ -83,14 +84,24 @@ def analyze_resume(uploaded_file) -> str:
     except Exception as e:
         return f"Error analyzing resume: {e}"
 
+# ✅ Function to clean text (remove emojis)
+def clean_text(text):
+    return re.sub(r'[^\x00-\x7F]+', '', text)  # Non-ASCII characters (like emojis) remove karega
+
 # ✅ Generate a PDF report with FPDF
 def generate_pdf_report(content: str, filename: str):
     try:
         pdf = FPDF()
         pdf.add_page()
-        pdf.set_font("Arial", size=12)
+
+        # ✅ Use Helvetica (Unicode supported font)
+        pdf.set_font("helvetica", size=12)  
+
+        # ✅ Clean text before saving (remove emojis if needed)
+        content = clean_text(content)
+
         pdf.multi_cell(0, 10, content)
-        pdf.output(filename)
+        pdf.output(filename, "F")
     except Exception as e:
         st.error(f"Error generating PDF: {e}")
 
@@ -159,7 +170,7 @@ if st.button("Download Full Interview Report"):
         filename = "interview_report.pdf"
         generate_pdf_report(report_content, filename)
         with open(filename, "rb") as file:
-            st.download_button("📥Download Report PDF", file, file_name=filename)
+            st.download_button("📥 Download Report PDF", file, file_name=filename)
     except Exception as e:
         st.error(f"Error downloading report: {e}")
 
